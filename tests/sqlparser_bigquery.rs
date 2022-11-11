@@ -15,6 +15,7 @@ mod test_utils;
 
 use sqlparser::ast::*;
 use sqlparser::dialect::{BigQueryDialect, GenericDialect};
+use sqlparser::location::Located;
 use test_utils::*;
 
 #[test]
@@ -34,7 +35,7 @@ fn parse_literal_string() {
 
 #[test]
 fn parse_table_identifiers() {
-    fn test_table_ident(ident: &str, expected: Vec<Ident>) {
+    fn test_table_ident(ident: &str, expected: Vec<Located<Ident>>) {
         let sql = format!("SELECT 1 FROM {}", ident);
         let select = bigquery().verified_only_select(&sql);
         assert_eq!(
@@ -314,10 +315,13 @@ fn parse_map_access_offset() {
     assert_eq!(
         _select.projection[0],
         SelectItem::UnnamedExpr(Expr::MapAccess {
-            column: Box::new(Expr::Identifier(Ident {
-                value: "d".to_string(),
-                quote_style: None,
-            })),
+            column: Box::new(Expr::Identifier(Located::new(
+                Ident {
+                    value: "d".to_string(),
+                    quote_style: None,
+                },
+                None
+            ))),
             keys: vec![Expr::Function(Function {
                 name: ObjectName(vec!["offset".into()]),
                 args: vec![FunctionArg::Unnamed(FunctionArgExpr::Expr(Expr::Value(
