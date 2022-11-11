@@ -11,6 +11,7 @@ use crate::ast::{
     ColumnDef, FileFormat, HiveDistributionStyle, HiveFormat, Ident, ObjectName, OnCommit, Query,
     SqlOption, Statement, TableConstraint,
 };
+use crate::location::Located;
 use crate::parser::ParserError;
 
 /// Builder for create table statement variant ([1]).
@@ -69,7 +70,7 @@ pub struct CreateTableBuilder {
     pub collation: Option<String>,
     pub on_commit: Option<OnCommit>,
     pub on_cluster: Option<String>,
-    pub order_by: Option<Vec<Ident>>,
+    pub order_by: Option<Vec<Located<Ident>>>,
 }
 
 impl CreateTableBuilder {
@@ -215,7 +216,7 @@ impl CreateTableBuilder {
         self
     }
 
-    pub fn order_by(mut self, order_by: Option<Vec<Ident>>) -> Self {
+    pub fn order_by(mut self, order_by: Option<Vec<Located<Ident>>>) -> Self {
         self.order_by = order_by;
         self
     }

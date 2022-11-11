@@ -27,6 +27,7 @@ use sqlparser::dialect::{
     MySqlDialect, PostgreSqlDialect, RedshiftSqlDialect, SQLiteDialect, SnowflakeDialect,
 };
 use sqlparser::keywords::ALL_KEYWORDS;
+use sqlparser::location::Located;
 use sqlparser::parser::{Parser, ParserError};
 use test_utils::{
     all_dialects, assert_eq_vec, expr_from_projection, join, number, only, table, table_alias,
@@ -868,10 +869,7 @@ fn parse_select_with_date_column_name() {
     let sql = "SELECT date";
     let select = verified_only_select(sql);
     assert_eq!(
-        &Expr::Identifier(Ident {
-            value: "date".into(),
-            quote_style: None,
-        }),
+        &Expr::Identifier(Ident::new("date")),
         expr_from_projection(only(&select.projection)),
     );
 }
@@ -1094,10 +1092,7 @@ fn parse_null_like() {
                 pattern: Box::new(Expr::Value(Value::Null)),
                 escape_char: None,
             },
-            alias: Ident {
-                value: "col_null".to_owned(),
-                quote_style: None,
-            },
+            alias: Ident::new("col_null"),
         },
         select.projection[0]
     );
@@ -1109,10 +1104,7 @@ fn parse_null_like() {
                 pattern: Box::new(Expr::Identifier(Ident::new("column1"))),
                 escape_char: None,
             },
-            alias: Ident {
-                value: "null_col".to_owned(),
-                quote_style: None,
-            },
+            alias: Ident::new("null_col"),
         },
         select.projection[1]
     );
@@ -1954,18 +1946,12 @@ fn parse_listagg() {
     });
     let within_group = vec![
         OrderByExpr {
-            expr: Expr::Identifier(Ident {
-                value: "id".to_string(),
-                quote_style: None,
-            }),
+            expr: Expr::Identifier(Ident::new("id")),
             asc: None,
             nulls_first: None,
         },
         OrderByExpr {
-            expr: Expr::Identifier(Ident {
-                value: "username".to_string(),
-                quote_style: None,
-            }),
+            expr: Expr::Identifier(Ident::new("username")),
             asc: None,
             nulls_first: None,
         },
@@ -3482,17 +3468,11 @@ fn parse_interval_and_or_xor() {
         body: Box::new(SetExpr::Select(Box::new(Select {
             distinct: false,
             top: None,
-            projection: vec![UnnamedExpr(Expr::Identifier(Ident {
-                value: "col".to_string(),
-                quote_style: None,
-            }))],
+            projection: vec![UnnamedExpr(Expr::Identifier(Ident::new("col")))],
             into: None,
             from: vec![TableWithJoins {
                 relation: TableFactor::Table {
-                    name: ObjectName(vec![Ident {
-                        value: "test".to_string(),
-                        quote_style: None,
-                    }]),
+                    name: ObjectName(vec![Ident::new("test")]),
                     alias: None,
                     args: None,
                     with_hints: vec![],
@@ -3502,16 +3482,10 @@ fn parse_interval_and_or_xor() {
             lateral_views: vec![],
             selection: Some(Expr::BinaryOp {
                 left: Box::new(Expr::BinaryOp {
-                    left: Box::new(Expr::Identifier(Ident {
-                        value: "d3_date".to_string(),
-                        quote_style: None,
-                    })),
+                    left: Box::new(Expr::Identifier(Ident::new("d3_date"))),
                     op: BinaryOperator::Gt,
                     right: Box::new(Expr::BinaryOp {
-                        left: Box::new(Expr::Identifier(Ident {
-                            value: "d1_date".to_string(),
-                            quote_style: None,
-                        })),
+                        left: Box::new(Expr::Identifier(Ident::new("d1_date"))),
                         op: BinaryOperator::Plus,
                         right: Box::new(Expr::Interval {
                             value: Box::new(Expr::Value(Value::SingleQuotedString(
@@ -3526,16 +3500,10 @@ fn parse_interval_and_or_xor() {
                 }),
                 op: BinaryOperator::And,
                 right: Box::new(Expr::BinaryOp {
-                    left: Box::new(Expr::Identifier(Ident {
-                        value: "d2_date".to_string(),
-                        quote_style: None,
-                    })),
+                    left: Box::new(Expr::Identifier(Ident::new("d2_date"))),
                     op: BinaryOperator::Gt,
                     right: Box::new(Expr::BinaryOp {
-                        left: Box::new(Expr::Identifier(Ident {
-                            value: "d1_date".to_string(),
-                            quote_style: None,
-                        })),
+                        left: Box::new(Expr::Identifier(Ident::new("d1_date"))),
                         op: BinaryOperator::Plus,
                         right: Box::new(Expr::Interval {
                             value: Box::new(Expr::Value(Value::SingleQuotedString(
@@ -3592,10 +3560,7 @@ fn parse_at_timezone() {
     assert_eq!(
         &Expr::AtTimeZone {
             timestamp: Box::new(Expr::Function(Function {
-                name: ObjectName(vec![Ident {
-                    value: "FROM_UNIXTIME".to_string(),
-                    quote_style: None,
-                }]),
+                name: ObjectName(vec![Ident::new("FROM_UNIXTIME")]),
                 args: vec![FunctionArg::Unnamed(FunctionArgExpr::Expr(zero.clone()))],
                 over: None,
                 distinct: false,
@@ -3611,17 +3576,11 @@ fn parse_at_timezone() {
     assert_eq!(
         &SelectItem::ExprWithAlias {
             expr: Expr::Function(Function {
-                name: ObjectName(vec![Ident {
-                    value: "DATE_FORMAT".to_string(),
-                    quote_style: None,
-                },],),
+                name: ObjectName(vec![Ident::new("DATE_FORMAT")]),
                 args: vec![
                     FunctionArg::Unnamed(FunctionArgExpr::Expr(Expr::AtTimeZone {
                         timestamp: Box::new(Expr::Function(Function {
-                            name: ObjectName(vec![Ident {
-                                value: "FROM_UNIXTIME".to_string(),
-                                quote_style: None,
-                            },],),
+                            name: ObjectName(vec![Ident::new("FROM_UNIXTIME")]),
                             args: vec![FunctionArg::Unnamed(FunctionArgExpr::Expr(zero))],
                             over: None,
                             distinct: false,
@@ -3637,10 +3596,7 @@ fn parse_at_timezone() {
                 distinct: false,
                 special: false,
             },),
-            alias: Ident {
-                value: "hour".to_string(),
-                quote_style: Some('"'),
-            },
+            alias: Ident::with_quote('"', "hour"),
         },
         only(&select.projection),
     );
@@ -4439,14 +4395,8 @@ fn parse_recursive_cte() {
     assert_eq!(with.cte_tables.len(), 1);
     let expected = Cte {
         alias: TableAlias {
-            name: Ident {
-                value: "nums".to_string(),
-                quote_style: None,
-            },
-            columns: vec![Ident {
-                value: "val".to_string(),
-                quote_style: None,
-            }],
+            name: Ident::new("nums"),
+            columns: vec![Ident::new("val")],
         },
         query: Box::new(cte_query),
         from: None,
@@ -4764,7 +4714,7 @@ fn parse_create_view() {
             cluster_by,
         } => {
             assert_eq!("myschema.myview", name.to_string());
-            assert_eq!(Vec::<Ident>::new(), columns);
+            assert_eq!(Vec::<Located<Ident>>::new(), columns);
             assert_eq!("SELECT foo FROM bar", query.to_string());
             assert!(!materialized);
             assert!(!or_replace);
@@ -4891,7 +4841,7 @@ fn parse_create_materialized_view() {
             cluster_by,
         } => {
             assert_eq!("myschema.myview", name.to_string());
-            assert_eq!(Vec::<Ident>::new(), columns);
+            assert_eq!(Vec::<Located<Ident>>::new(), columns);
             assert_eq!("SELECT foo FROM bar", query.to_string());
             assert!(materialized);
             assert_eq!(with_options, vec![]);
@@ -4916,7 +4866,7 @@ fn parse_create_materialized_view_with_cluster_by() {
             cluster_by,
         } => {
             assert_eq!("myschema.myview", name.to_string());
-            assert_eq!(Vec::<Ident>::new(), columns);
+            assert_eq!(Vec::<Located<Ident>>::new(), columns);
             assert_eq!("SELECT foo FROM bar", query.to_string());
             assert!(materialized);
             assert_eq!(with_options, vec![]);
@@ -5600,16 +5550,7 @@ fn parse_grant() {
                         Action::Select { columns: None },
                         Action::Insert { columns: None },
                         Action::Update {
-                            columns: Some(vec![
-                                Ident {
-                                    value: "shape".into(),
-                                    quote_style: None,
-                                },
-                                Ident {
-                                    value: "size".into(),
-                                    quote_style: None,
-                                },
-                            ])
+                            columns: Some(vec![Ident::new("shape"), Ident::new("size"),])
                         },
                         Action::Usage,
                         Action::Delete,
@@ -5828,10 +5769,7 @@ fn parse_merge() {
                         locks: vec![],
                     }),
                     alias: Some(TableAlias {
-                        name: Ident {
-                            value: "stg".to_string(),
-                            quote_style: None,
-                        },
+                        name: Ident::new("stg"),
                         columns: vec![],
                     }),
                 }
@@ -5973,13 +5911,7 @@ fn test_lock_table() {
     assert_eq!(ast.locks.len(), 1);
     let lock = ast.locks.pop().unwrap();
     assert_eq!(lock.lock_type, LockType::Update);
-    assert_eq!(
-        lock.of.unwrap().0,
-        vec![Ident {
-            value: "school".to_string(),
-            quote_style: None
-        }]
-    );
+    assert_eq!(lock.of.unwrap().0, vec![Ident::new("school")]);
     assert!(lock.nonblock.is_none());
 
     let sql = "SELECT * FROM student WHERE id = '1' FOR SHARE OF school";
@@ -5987,13 +5919,7 @@ fn test_lock_table() {
     assert_eq!(ast.locks.len(), 1);
     let lock = ast.locks.pop().unwrap();
     assert_eq!(lock.lock_type, LockType::Share);
-    assert_eq!(
-        lock.of.unwrap().0,
-        vec![Ident {
-            value: "school".to_string(),
-            quote_style: None
-        }]
-    );
+    assert_eq!(lock.of.unwrap().0, vec![Ident::new("school")]);
     assert!(lock.nonblock.is_none());
 
     let sql = "SELECT * FROM student WHERE id = '1' FOR SHARE OF school FOR UPDATE OF student";
@@ -6001,23 +5927,11 @@ fn test_lock_table() {
     assert_eq!(ast.locks.len(), 2);
     let lock = ast.locks.remove(0);
     assert_eq!(lock.lock_type, LockType::Share);
-    assert_eq!(
-        lock.of.unwrap().0,
-        vec![Ident {
-            value: "school".to_string(),
-            quote_style: None
-        }]
-    );
+    assert_eq!(lock.of.unwrap().0, vec![Ident::new("school")]);
     assert!(lock.nonblock.is_none());
     let lock = ast.locks.remove(0);
     assert_eq!(lock.lock_type, LockType::Update);
-    assert_eq!(
-        lock.of.unwrap().0,
-        vec![Ident {
-            value: "student".to_string(),
-            quote_style: None
-        }]
-    );
+    assert_eq!(lock.of.unwrap().0, vec![Ident::new("student")]);
     assert!(lock.nonblock.is_none());
 }
 
@@ -6028,13 +5942,7 @@ fn test_lock_nonblock() {
     assert_eq!(ast.locks.len(), 1);
     let lock = ast.locks.pop().unwrap();
     assert_eq!(lock.lock_type, LockType::Update);
-    assert_eq!(
-        lock.of.unwrap().0,
-        vec![Ident {
-            value: "school".to_string(),
-            quote_style: None
-        }]
-    );
+    assert_eq!(lock.of.unwrap().0, vec![Ident::new("school")]);
     assert_eq!(lock.nonblock.unwrap(), NonBlock::SkipLocked);
 
     let sql = "SELECT * FROM student WHERE id = '1' FOR SHARE OF school NOWAIT";
@@ -6042,13 +5950,7 @@ fn test_lock_nonblock() {
     assert_eq!(ast.locks.len(), 1);
     let lock = ast.locks.pop().unwrap();
     assert_eq!(lock.lock_type, LockType::Share);
-    assert_eq!(
-        lock.of.unwrap().0,
-        vec![Ident {
-            value: "school".to_string(),
-            quote_style: None
-        }]
-    );
+    assert_eq!(lock.of.unwrap().0, vec![Ident::new("school")]);
     assert_eq!(lock.nonblock.unwrap(), NonBlock::Nowait);
 }
 

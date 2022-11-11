@@ -986,10 +986,7 @@ fn parse_set() {
             local: false,
             hivevar: false,
             variable: ObjectName(vec![Ident::new("a")]),
-            value: vec![Expr::Identifier(Ident {
-                value: "b".into(),
-                quote_style: None
-            })],
+            value: vec![Expr::Identifier(Ident::new("b"))],
         }
     );
 
@@ -1028,10 +1025,7 @@ fn parse_set() {
             local: false,
             hivevar: false,
             variable: ObjectName(vec![Ident::new("a")]),
-            value: vec![Expr::Identifier(Ident {
-                value: "DEFAULT".into(),
-                quote_style: None
-            })],
+            value: vec![Expr::Identifier(Ident::new("DEFAULT"))],
         }
     );
 
@@ -1053,10 +1047,7 @@ fn parse_set() {
             local: false,
             hivevar: false,
             variable: ObjectName(vec![Ident::new("a"), Ident::new("b"), Ident::new("c")]),
-            value: vec![Expr::Identifier(Ident {
-                value: "b".into(),
-                quote_style: None
-            })],
+            value: vec![Expr::Identifier(Ident::new("b"))],
         }
     );
 
@@ -1124,10 +1115,7 @@ fn parse_set_role() {
         stmt,
         Statement::SetRole {
             context_modifier: ContextModifier::Local,
-            role_name: Some(Ident {
-                value: "rolename".to_string(),
-                quote_style: Some('\"'),
-            }),
+            role_name: Some(Ident::with_quote('\"', "rolename".to_string())),
         }
     );
     assert_eq!(query, stmt.to_string());
@@ -1138,10 +1126,7 @@ fn parse_set_role() {
         stmt,
         Statement::SetRole {
             context_modifier: ContextModifier::None,
-            role_name: Some(Ident {
-                value: "rolename".to_string(),
-                quote_style: Some('\''),
-            }),
+            role_name: Some(Ident::with_quote('\'', "rolename".to_string())),
         }
     );
     assert_eq!(query, stmt.to_string());
@@ -1313,7 +1298,7 @@ fn parse_pg_on_conflict() {
                 })),
             ..
         } => {
-            assert_eq!(vec![Ident::from("did")], cols);
+            assert_eq!(vec![Located::<Ident>::from("did")], cols);
             assert_eq!(
                 OnConflictAction::DoUpdate(DoUpdate {
                     assignments: vec![Assignment {
@@ -1343,7 +1328,13 @@ fn parse_pg_on_conflict() {
                 })),
             ..
         } => {
-            assert_eq!(vec![Ident::from("did"), Ident::from("area"),], cols);
+            assert_eq!(
+                vec![
+                    Located::<Ident>::from("did"),
+                    Located::<Ident>::from("area"),
+                ],
+                cols
+            );
             assert_eq!(
                 OnConflictAction::DoUpdate(DoUpdate {
                     assignments: vec![
@@ -1401,7 +1392,7 @@ fn parse_pg_on_conflict() {
                 })),
             ..
         } => {
-            assert_eq!(vec![Ident::from("did")], cols);
+            assert_eq!(vec![Located::<Ident>::from("did")], cols);
             assert_eq!(
                 OnConflictAction::DoUpdate(DoUpdate {
                     assignments: vec![Assignment {
@@ -1409,10 +1400,7 @@ fn parse_pg_on_conflict() {
                         value: Expr::Value(Value::Placeholder("$1".to_string()))
                     },],
                     selection: Some(Expr::BinaryOp {
-                        left: Box::new(Expr::Identifier(Ident {
-                            value: "dsize".to_string(),
-                            quote_style: None
-                        })),
+                        left: Box::new(Expr::Identifier(Ident::new("dsize".to_string()))),
                         op: BinaryOperator::Gt,
                         right: Box::new(Expr::Value(Value::Placeholder("$2".to_string())))
                     })
@@ -1438,7 +1426,10 @@ fn parse_pg_on_conflict() {
                 })),
             ..
         } => {
-            assert_eq!(vec![Ident::from("distributors_did_pkey")], cname.0);
+            assert_eq!(
+                vec![Located::<Ident>::from("distributors_did_pkey")],
+                cname.0
+            );
             assert_eq!(
                 OnConflictAction::DoUpdate(DoUpdate {
                     assignments: vec![Assignment {
@@ -1446,10 +1437,7 @@ fn parse_pg_on_conflict() {
                         value: Expr::Value(Value::Placeholder("$1".to_string()))
                     },],
                     selection: Some(Expr::BinaryOp {
-                        left: Box::new(Expr::Identifier(Ident {
-                            value: "dsize".to_string(),
-                            quote_style: None
-                        })),
+                        left: Box::new(Expr::Identifier(Ident::new("dsize".to_string()))),
                         op: BinaryOperator::Gt,
                         right: Box::new(Expr::Value(Value::Placeholder("$2".to_string())))
                     })
@@ -1638,14 +1626,8 @@ fn parse_array_index_expr() {
             obj: Box::new(Expr::Identifier(Ident::new("bar"))),
             indexes: vec![
                 num[0].clone(),
-                Expr::Identifier(Ident {
-                    value: "baz".to_string(),
-                    quote_style: Some('"')
-                }),
-                Expr::Identifier(Ident {
-                    value: "fooz".to_string(),
-                    quote_style: Some('"')
-                })
+                Expr::Identifier(Ident::with_quote('"', "baz".to_string())),
+                Expr::Identifier(Ident::with_quote('"', "fooz".to_string())),
             ],
         },
         expr_from_projection(only(&select.projection)),
@@ -1879,7 +1861,7 @@ fn test_json() {
     let select = pg().verified_only_select(sql);
     assert_eq!(
         SelectItem::UnnamedExpr(Expr::JsonAccess {
-            left: Box::new(Expr::Identifier(Ident::from("info"))),
+            left: Box::new(Expr::Identifier(Located::<Ident>::from("info"))),
             operator: JsonOperator::HashMinus,
             right: Box::new(Expr::Array(Array {
                 elem: vec![
@@ -1896,7 +1878,7 @@ fn test_json() {
     let select = pg().verified_only_select(sql);
     assert_eq!(
         Expr::JsonAccess {
-            left: Box::new(Expr::Identifier(Ident::from("info"))),
+            left: Box::new(Expr::Identifier(Located::<Ident>::from("info"))),
             operator: JsonOperator::AtQuestion,
             right: Box::new(Expr::Value(Value::SingleQuotedString("$.a".to_string())),),
         },
@@ -1907,7 +1889,7 @@ fn test_json() {
     let select = pg().verified_only_select(sql);
     assert_eq!(
         Expr::JsonAccess {
-            left: Box::new(Expr::Identifier(Ident::from("info"))),
+            left: Box::new(Expr::Identifier(Located::<Ident>::from("info"))),
             operator: JsonOperator::AtAt,
             right: Box::new(Expr::Value(Value::SingleQuotedString("$.a".to_string())),),
         },
@@ -2197,10 +2179,7 @@ fn parse_custom_operator() {
     assert_eq!(
         select.selection,
         Some(Expr::BinaryOp {
-            left: Box::new(Expr::Identifier(Ident {
-                value: "relname".into(),
-                quote_style: None,
-            })),
+            left: Box::new(Expr::Identifier(Ident::new("relname"))),
             op: BinaryOperator::PGCustomBinaryOperator(vec![
                 "database".into(),
                 "pg_catalog".into(),
@@ -2216,10 +2195,7 @@ fn parse_custom_operator() {
     assert_eq!(
         select.selection,
         Some(Expr::BinaryOp {
-            left: Box::new(Expr::Identifier(Ident {
-                value: "relname".into(),
-                quote_style: None,
-            })),
+            left: Box::new(Expr::Identifier(Ident::new("relname"))),
             op: BinaryOperator::PGCustomBinaryOperator(vec!["pg_catalog".into(), "~".into()]),
             right: Box::new(Expr::Value(Value::SingleQuotedString("^(table)$".into())))
         })
@@ -2231,10 +2207,7 @@ fn parse_custom_operator() {
     assert_eq!(
         select.selection,
         Some(Expr::BinaryOp {
-            left: Box::new(Expr::Identifier(Ident {
-                value: "relname".into(),
-                quote_style: None,
-            })),
+            left: Box::new(Expr::Identifier(Ident::new("relname"))),
             op: BinaryOperator::PGCustomBinaryOperator(vec!["~".into()]),
             right: Box::new(Expr::Value(Value::SingleQuotedString("^(table)$".into())))
         })
@@ -2627,10 +2600,7 @@ fn parse_drop_function() {
         Statement::DropFunction {
             if_exists: true,
             func_desc: vec![DropFunctionDesc {
-                name: ObjectName(vec![Ident {
-                    value: "test_func".to_string(),
-                    quote_style: None
-                }]),
+                name: ObjectName(vec![Ident::new("test_func".to_string())]),
                 args: None
             }],
             option: None
@@ -2643,10 +2613,7 @@ fn parse_drop_function() {
         Statement::DropFunction {
             if_exists: true,
             func_desc: vec![DropFunctionDesc {
-                name: ObjectName(vec![Ident {
-                    value: "test_func".to_string(),
-                    quote_style: None
-                }]),
+                name: ObjectName(vec![Ident::new("test_func".to_string())]),
                 args: Some(vec![
                     OperateFunctionArg::with_name("a", DataType::Integer(None)),
                     OperateFunctionArg {
@@ -2668,10 +2635,7 @@ fn parse_drop_function() {
             if_exists: true,
             func_desc: vec![
                 DropFunctionDesc {
-                    name: ObjectName(vec![Ident {
-                        value: "test_func1".to_string(),
-                        quote_style: None
-                    }]),
+                    name: ObjectName(vec![Ident::new("test_func1".to_string())]),
                     args: Some(vec![
                         OperateFunctionArg::with_name("a", DataType::Integer(None)),
                         OperateFunctionArg {
@@ -2686,10 +2650,7 @@ fn parse_drop_function() {
                     ]),
                 },
                 DropFunctionDesc {
-                    name: ObjectName(vec![Ident {
-                        value: "test_func2".to_string(),
-                        quote_style: None
-                    }]),
+                    name: ObjectName(vec![Ident::new("test_func2")]),
                     args: Some(vec![
                         OperateFunctionArg::with_name("a", DataType::Varchar(None)),
                         OperateFunctionArg {
@@ -2754,10 +2715,7 @@ fn parse_dollar_quoted_string() {
                 tag: None,
                 value: "Foo$Bar".into(),
             })),
-            alias: Ident {
-                value: "col_name".into(),
-                quote_style: None,
-            },
+            alias: Ident::new("col_name".to_string()),
         }
     );
 
