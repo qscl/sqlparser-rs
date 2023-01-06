@@ -167,3 +167,9 @@ impl<T, L> std::ops::Deref for Located<T, L> {
         &self.value
     }
 }
+
+impl<T, L> AsRef<T> for Located<T, L> {
+    fn as_ref(&self) -> &T {
+        &self.value
+    }
+}
