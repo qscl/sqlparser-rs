@@ -2593,7 +2593,7 @@ impl<'a> Parser<'a> {
 
     fn track_autocomplete(&mut self, token: Token) {
         let index = std::cmp::min(self.index, self.autocomplete.len());
-        if index > 0 {
+        if index > 0 && !self.autocomplete[index - 1].contains(&token) {
             self.autocomplete[index - 1].push(token);
         }
     }
@@ -2624,26 +2624,29 @@ impl<'a> Parser<'a> {
 
         // Find the index of the token this location is inside
         //
-        let mut index = self.tokens.partition_point(|a| {
-            if a.location.line == loc.line {
-                a.location.column <= loc.column
-            } else {
-                a.location.line < loc.line
-            }
-        }) - 1;
+        let mut index = self.tokens.partition_point(|a| a.location <= loc);
+        if loc < self.eof_loc {
+            index -= 1;
+        }
 
         // If we're at the start of our token, the previous token is a word and the current token
         // is whitespace, then return the suggestions for the previous token.
         //
         if index > 0
-            && self.tokens[index].location == loc
+            && (index < self.tokens.len() && self.tokens[index].location == loc
+                || loc == self.eof_loc)
             && matches!(self.tokens[index - 1].token, Token::Word(_))
-            && matches!(self.tokens[index].token, Token::Whitespace(_))
+            && (index >= self.tokens.len()
+                || matches!(self.tokens[index].token, Token::Whitespace(_)))
         {
             return (
                 self.tokens[index - 1].clone(),
                 self.autocomplete[index - 1].clone(),
             );
+        }
+
+        if index >= self.tokens.len() {
+            return (self.eof_token(), eof_autocomplete);
         }
 
         // If the current token is not a word, skip its suggestions and look for subsequent ones.
@@ -2663,11 +2666,11 @@ impl<'a> Parser<'a> {
 
         // If we've reached the end of the stream without finding any suggestions, return the EOF
         // suggestions.  As a special case, do not return any suggestions if the last token was a
-        // word, since it has no whitespace after it.
+        // keyword or literal.
         //
-        if match self.tokens.last().unwrap().token {
-            Token::Word(_)
-            | Token::Number { .. }
+        if match &self.tokens.last().unwrap().token {
+            Token::Word(w) if w.keyword != Keyword::NoKeyword => true,
+            Token::Number { .. }
             | Token::SingleQuotedString(_)
             | Token::DoubleQuotedString(_)
             | Token::NationalStringLiteral(_)
