@@ -1,3 +1,6 @@
+NOTE: This is a fork of [sqlparser-rs](https://github.com/sqlparser-rs/sqlparser-rs) project, which contains changes
+specific to [QueryScript](https://github.com/qscl/queryscript). It's forked and published following [these instructions](https://users.rust-lang.org/t/crate-how-to-publish-a-fork/57234).
+
 # Extensible SQL Lexer and Parser for Rust
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
