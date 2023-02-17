@@ -3,8 +3,16 @@ use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
 use std::fmt;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "visitor")]
+use sqlparser_derive::{Visit, VisitMut};
+
 /// Location in input string
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
 pub struct Location {
     /// Line number, starting from 1
     pub line: u64,
@@ -35,6 +43,8 @@ impl PartialOrd for Location {
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
 pub struct Range {
     pub start: Location,
     pub end: Location,
@@ -54,6 +64,8 @@ impl Range {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
 pub struct Located<T, L = Option<Range>> {
     value: T,
     location: L,
