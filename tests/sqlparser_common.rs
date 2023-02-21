@@ -20,6 +20,7 @@
 
 use matches::assert_matches;
 
+use sqlparser::ast::foreach::ToForEach;
 use sqlparser::ast::SelectItem::UnnamedExpr;
 use sqlparser::ast::*;
 use sqlparser::dialect::{
@@ -243,7 +244,7 @@ fn parse_update_set_from() {
                             }],
                             lateral_views: vec![],
                             selection: None,
-                            group_by: vec![Expr::Identifier(Ident::new("id"))],
+                            group_by: vec![Expr::Identifier(Ident::new("id"))].for_each(),
                             cluster_by: vec![],
                             distribute_by: vec![],
                             sort_by: vec![],
@@ -1539,7 +1540,8 @@ fn parse_select_group_by() {
         vec![
             Expr::Identifier(Ident::new("lname")),
             Expr::Identifier(Ident::new("fname")),
-        ],
+        ]
+        .for_each(),
         select.group_by
     );
 
@@ -1561,12 +1563,16 @@ fn parse_select_group_by_grouping_sets() {
     assert_eq!(
         vec![
             Expr::Identifier(Ident::new("size")),
-            Expr::GroupingSets(vec![
-                vec![Expr::Identifier(Ident::new("brand"))],
-                vec![Expr::Identifier(Ident::new("size"))],
-                vec![],
-            ]),
-        ],
+            Expr::GroupingSets(
+                vec![
+                    vec![Expr::Identifier(Ident::new("brand"))],
+                    vec![Expr::Identifier(Ident::new("size"))],
+                    vec![],
+                ]
+                .for_each()
+            ),
+        ]
+        .for_each(),
         select.group_by
     );
 }
@@ -1581,11 +1587,15 @@ fn parse_select_group_by_rollup() {
     assert_eq!(
         vec![
             Expr::Identifier(Ident::new("size")),
-            Expr::Rollup(vec![
-                vec![Expr::Identifier(Ident::new("brand"))],
-                vec![Expr::Identifier(Ident::new("size"))],
-            ]),
-        ],
+            Expr::Rollup(
+                vec![
+                    vec![Expr::Identifier(Ident::new("brand"))],
+                    vec![Expr::Identifier(Ident::new("size"))],
+                ]
+                .for_each()
+            ),
+        ]
+        .for_each(),
         select.group_by
     );
 }
@@ -1600,11 +1610,15 @@ fn parse_select_group_by_cube() {
     assert_eq!(
         vec![
             Expr::Identifier(Ident::new("size")),
-            Expr::Cube(vec![
-                vec![Expr::Identifier(Ident::new("brand"))],
-                vec![Expr::Identifier(Ident::new("size"))],
-            ]),
-        ],
+            Expr::Cube(
+                vec![
+                    vec![Expr::Identifier(Ident::new("brand"))],
+                    vec![Expr::Identifier(Ident::new("size"))],
+                ]
+                .for_each()
+            ),
+        ]
+        .for_each(),
         select.group_by
     );
 }
@@ -3898,24 +3912,29 @@ fn parse_searched_case_expr() {
     assert_eq!(
         &Case {
             operand: None,
-            conditions: vec![
-                IsNull(Box::new(Identifier(Ident::new("bar")))),
-                BinaryOp {
-                    left: Box::new(Identifier(Ident::new("bar"))),
-                    op: Eq,
-                    right: Box::new(Expr::Value(number("0"))),
+            arms: vec![
+                CaseArm {
+                    condition: IsNull(Box::new(Identifier(Ident::new("bar")))),
+                    result: Expr::Value(Value::SingleQuotedString("null".to_string())),
                 },
-                BinaryOp {
-                    left: Box::new(Identifier(Ident::new("bar"))),
-                    op: GtEq,
-                    right: Box::new(Expr::Value(number("0"))),
+                CaseArm {
+                    condition: BinaryOp {
+                        left: Box::new(Identifier(Ident::new("bar"))),
+                        op: Eq,
+                        right: Box::new(Expr::Value(number("0"))),
+                    },
+                    result: Expr::Value(Value::SingleQuotedString("=0".to_string())),
                 },
-            ],
-            results: vec![
-                Expr::Value(Value::SingleQuotedString("null".to_string())),
-                Expr::Value(Value::SingleQuotedString("=0".to_string())),
-                Expr::Value(Value::SingleQuotedString(">=0".to_string())),
-            ],
+                CaseArm {
+                    condition: BinaryOp {
+                        left: Box::new(Identifier(Ident::new("bar"))),
+                        op: GtEq,
+                        right: Box::new(Expr::Value(number("0"))),
+                    },
+                    result: Expr::Value(Value::SingleQuotedString(">=0".to_string())),
+                }
+            ]
+            .for_each(),
             else_result: Some(Box::new(Expr::Value(Value::SingleQuotedString(
                 "<0".to_string()
             )))),
@@ -3933,8 +3952,11 @@ fn parse_simple_case_expr() {
     assert_eq!(
         &Case {
             operand: Some(Box::new(Identifier(Ident::new("foo")))),
-            conditions: vec![Expr::Value(number("1"))],
-            results: vec![Expr::Value(Value::SingleQuotedString("Y".to_string()))],
+            arms: vec![CaseArm {
+                condition: Expr::Value(number("1")),
+                result: Expr::Value(Value::SingleQuotedString("Y".to_string())),
+            }]
+            .for_each(),
             else_result: Some(Box::new(Expr::Value(Value::SingleQuotedString(
                 "N".to_string()
             )))),
