@@ -2481,7 +2481,11 @@ impl<'a> Parser<'a> {
                     {
                         break;
                     }
-                    Token::RParen | Token::SemiColon | Token::EOF => break,
+                    Token::RParen
+                    | Token::SemiColon
+                    | Token::EOF
+                    | Token::RBracket
+                    | Token::RBrace => break,
                     _ => continue,
                 }
             }
