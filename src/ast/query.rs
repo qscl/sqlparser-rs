@@ -206,7 +206,7 @@ pub struct Select {
     /// WHERE
     pub selection: Option<Expr>,
     /// GROUP BY
-    pub group_by: Vec<Expr>,
+    pub group_by: Vec<ForEachOr<Expr>>,
     /// CLUSTER BY (Hive)
     pub cluster_by: Vec<Expr>,
     /// DISTRIBUTE BY (Hive)
@@ -362,6 +362,8 @@ pub enum SelectItem {
     QualifiedWildcard(ObjectName, WildcardAdditionalOptions),
     /// An unqualified `*`
     Wildcard(WildcardAdditionalOptions),
+    /// A foreach loop
+    ForEach(ForEach<SelectItem>),
 }
 
 /// Single aliased identifier
@@ -592,6 +594,9 @@ impl fmt::Display for SelectItem {
                 write!(f, "*")?;
                 write!(f, "{additional_options}")?;
                 Ok(())
+            }
+            SelectItem::ForEach(foreach) => {
+                write!(f, "{}", foreach)
             }
         }
     }
