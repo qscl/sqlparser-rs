@@ -43,6 +43,7 @@ pub use self::query::{
 pub use self::value::{
     escape_quoted_string, DateTimeField, DollarQuotedString, TrimWhereField, Value,
 };
+pub use foreach::{ForEach, ForEachOr, LoopRange};
 
 pub use crate::location::{Located, Location, Range};
 #[cfg(feature = "visitor")]
@@ -50,6 +51,7 @@ pub use visitor::*;
 
 mod data_type;
 mod ddl;
+pub mod foreach;
 pub mod helpers;
 mod operator;
 mod query;
@@ -300,6 +302,20 @@ impl fmt::Display for JsonOperator {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct CaseArm {
+    pub condition: Expr,
+    pub result: Expr,
+}
+
+impl fmt::Display for CaseArm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "WHEN {} THEN {}", self.condition, self.result)
+    }
+}
+
 /// An SQL expression of any type.
 ///
 /// The parser does not distinguish between expressions of different types
@@ -512,8 +528,7 @@ pub enum Expr {
     /// <https://jakewheat.github.io/sql-overview/sql-2011-foundation-grammar.html#simple-when-clause>
     Case {
         operand: Option<Box<Expr>>,
-        conditions: Vec<Expr>,
-        results: Vec<Expr>,
+        arms: Vec<ForEachOr<CaseArm>>,
         else_result: Option<Box<Expr>>,
     },
     /// An exists expression `[ NOT ] EXISTS(SELECT ...)`, used in expressions like
@@ -529,11 +544,11 @@ pub enum Expr {
     /// The `ARRAY_AGG` function `SELECT ARRAY_AGG(... ORDER BY ...)`
     ArrayAgg(ArrayAgg),
     /// The `GROUPING SETS` expr.
-    GroupingSets(Vec<Vec<Expr>>),
+    GroupingSets(Vec<ForEachOr<Vec<Expr>>>),
     /// The `CUBE` expr.
-    Cube(Vec<Vec<Expr>>),
+    Cube(Vec<ForEachOr<Vec<Expr>>>),
     /// The `ROLLUP` expr.
-    Rollup(Vec<Vec<Expr>>),
+    Rollup(Vec<ForEachOr<Vec<Expr>>>),
     /// ROW / TUPLE a single value, such as `SELECT (1, 2)`
     Tuple(Vec<Expr>),
     /// An array index expression e.g. `(ARRAY[1, 2])[1]` or `(current_schemas(FALSE))[1]`
@@ -762,16 +777,15 @@ impl fmt::Display for Expr {
             }
             Expr::Case {
                 operand,
-                conditions,
-                results,
+                arms,
                 else_result,
             } => {
                 write!(f, "CASE")?;
                 if let Some(operand) = operand {
                     write!(f, " {operand}")?;
                 }
-                for (c, r) in conditions.iter().zip(results) {
-                    write!(f, " WHEN {c} THEN {r}")?;
+                for arm in arms.iter() {
+                    write!(f, " {arm}")?;
                 }
 
                 if let Some(else_result) = else_result {
@@ -795,7 +809,10 @@ impl fmt::Display for Expr {
                 for set in sets {
                     write!(f, "{sep}")?;
                     sep = ", ";
-                    write!(f, "({})", display_comma_separated(set))?;
+                    match set {
+                        ForEachOr::Item(set) => write!(f, "({})", display_comma_separated(set)),
+                        ForEachOr::ForEach(set) => set.vec_display(f),
+                    }?;
                 }
                 write!(f, ")")
             }
@@ -805,12 +822,13 @@ impl fmt::Display for Expr {
                 for set in sets {
                     write!(f, "{sep}")?;
                     sep = ", ";
-                    if set.len() == 1 {
-                        write!(f, "{}", set[0])?;
-                    } else {
-                        write!(f, "({})", display_comma_separated(set))?;
-                    }
+                    match set {
+                        ForEachOr::Item(set) if set.len() == 1 => write!(f, "{}", set[0])?,
+                        ForEachOr::Item(set) => write!(f, "({})", display_comma_separated(set))?,
+                        ForEachOr::ForEach(set) => set.vec_display(f)?,
+                    };
                 }
+
                 write!(f, ")")
             }
             Expr::Rollup(sets) => {
@@ -819,10 +837,14 @@ impl fmt::Display for Expr {
                 for set in sets {
                     write!(f, "{sep}")?;
                     sep = ", ";
-                    if set.len() == 1 {
-                        write!(f, "{}", set[0])?;
-                    } else {
-                        write!(f, "({})", display_comma_separated(set))?;
+                    match set {
+                        ForEachOr::Item(set) if set.len() == 1 => {
+                            write!(f, "{}", set[0])?;
+                        }
+                        ForEachOr::Item(set) => {
+                            write!(f, "({})", display_comma_separated(set))?;
+                        }
+                        ForEachOr::ForEach(set) => set.vec_display(f)?,
                     }
                 }
                 write!(f, ")")
@@ -4239,6 +4261,8 @@ impl fmt::Display for IdentPair {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::foreach::ToForEach;
+
     use super::*;
 
     #[test]
@@ -4250,86 +4274,113 @@ mod tests {
     #[test]
     fn test_grouping_sets_display() {
         // a and b in different group
-        let grouping_sets = Expr::GroupingSets(vec![
-            vec![Expr::Identifier(Ident::new("a"))],
-            vec![Expr::Identifier(Ident::new("b"))],
-        ]);
+        let grouping_sets = Expr::GroupingSets(
+            vec![
+                vec![Expr::Identifier(Ident::new("a"))],
+                vec![Expr::Identifier(Ident::new("b"))],
+            ]
+            .for_each(),
+        );
         assert_eq!("GROUPING SETS ((a), (b))", format!("{grouping_sets}"));
 
         // a and b in the same group
-        let grouping_sets = Expr::GroupingSets(vec![vec![
-            Expr::Identifier(Ident::new("a")),
-            Expr::Identifier(Ident::new("b")),
-        ]]);
+        let grouping_sets = Expr::GroupingSets(
+            vec![vec![
+                Expr::Identifier(Ident::new("a")),
+                Expr::Identifier(Ident::new("b")),
+            ]]
+            .for_each(),
+        );
         assert_eq!("GROUPING SETS ((a, b))", format!("{grouping_sets}"));
 
         // (a, b) and (c, d) in different group
-        let grouping_sets = Expr::GroupingSets(vec![
+        let grouping_sets = Expr::GroupingSets(
             vec![
-                Expr::Identifier(Ident::new("a")),
-                Expr::Identifier(Ident::new("b")),
-            ],
-            vec![
-                Expr::Identifier(Ident::new("c")),
-                Expr::Identifier(Ident::new("d")),
-            ],
-        ]);
+                vec![
+                    Expr::Identifier(Ident::new("a")),
+                    Expr::Identifier(Ident::new("b")),
+                ],
+                vec![
+                    Expr::Identifier(Ident::new("c")),
+                    Expr::Identifier(Ident::new("d")),
+                ],
+            ]
+            .for_each(),
+        );
         assert_eq!("GROUPING SETS ((a, b), (c, d))", format!("{grouping_sets}"));
     }
 
     #[test]
     fn test_rollup_display() {
-        let rollup = Expr::Rollup(vec![vec![Expr::Identifier(Ident::new("a"))]]);
+        let rollup = Expr::Rollup(vec![vec![Expr::Identifier(Ident::new("a"))]].for_each());
         assert_eq!("ROLLUP (a)", format!("{rollup}"));
 
-        let rollup = Expr::Rollup(vec![vec![
-            Expr::Identifier(Ident::new("a")),
-            Expr::Identifier(Ident::new("b")),
-        ]]);
+        let rollup = Expr::Rollup(
+            vec![vec![
+                Expr::Identifier(Ident::new("a")),
+                Expr::Identifier(Ident::new("b")),
+            ]]
+            .for_each(),
+        );
         assert_eq!("ROLLUP ((a, b))", format!("{rollup}"));
 
-        let rollup = Expr::Rollup(vec![
-            vec![Expr::Identifier(Ident::new("a"))],
-            vec![Expr::Identifier(Ident::new("b"))],
-        ]);
+        let rollup = Expr::Rollup(
+            vec![
+                vec![Expr::Identifier(Ident::new("a"))],
+                vec![Expr::Identifier(Ident::new("b"))],
+            ]
+            .for_each(),
+        );
         assert_eq!("ROLLUP (a, b)", format!("{rollup}"));
 
-        let rollup = Expr::Rollup(vec![
-            vec![Expr::Identifier(Ident::new("a"))],
+        let rollup = Expr::Rollup(
             vec![
-                Expr::Identifier(Ident::new("b")),
-                Expr::Identifier(Ident::new("c")),
-            ],
-            vec![Expr::Identifier(Ident::new("d"))],
-        ]);
+                vec![Expr::Identifier(Ident::new("a"))],
+                vec![
+                    Expr::Identifier(Ident::new("b")),
+                    Expr::Identifier(Ident::new("c")),
+                ],
+                vec![Expr::Identifier(Ident::new("d"))],
+            ]
+            .for_each(),
+        );
         assert_eq!("ROLLUP (a, (b, c), d)", format!("{rollup}"));
     }
 
     #[test]
     fn test_cube_display() {
-        let cube = Expr::Cube(vec![vec![Expr::Identifier(Ident::new("a"))]]);
+        let cube = Expr::Cube(vec![vec![Expr::Identifier(Ident::new("a"))]].for_each());
         assert_eq!("CUBE (a)", format!("{cube}"));
 
-        let cube = Expr::Cube(vec![vec![
-            Expr::Identifier(Ident::new("a")),
-            Expr::Identifier(Ident::new("b")),
-        ]]);
+        let cube = Expr::Cube(
+            vec![vec![
+                Expr::Identifier(Ident::new("a")),
+                Expr::Identifier(Ident::new("b")),
+            ]]
+            .for_each(),
+        );
         assert_eq!("CUBE ((a, b))", format!("{cube}"));
 
-        let cube = Expr::Cube(vec![
-            vec![Expr::Identifier(Ident::new("a"))],
-            vec![Expr::Identifier(Ident::new("b"))],
-        ]);
+        let cube = Expr::Cube(
+            vec![
+                vec![Expr::Identifier(Ident::new("a"))],
+                vec![Expr::Identifier(Ident::new("b"))],
+            ]
+            .for_each(),
+        );
         assert_eq!("CUBE (a, b)", format!("{cube}"));
 
-        let cube = Expr::Cube(vec![
-            vec![Expr::Identifier(Ident::new("a"))],
+        let cube = Expr::Cube(
             vec![
-                Expr::Identifier(Ident::new("b")),
-                Expr::Identifier(Ident::new("c")),
-            ],
-            vec![Expr::Identifier(Ident::new("d"))],
-        ]);
+                vec![Expr::Identifier(Ident::new("a"))],
+                vec![
+                    Expr::Identifier(Ident::new("b")),
+                    Expr::Identifier(Ident::new("c")),
+                ],
+                vec![Expr::Identifier(Ident::new("d"))],
+            ]
+            .for_each(),
+        );
         assert_eq!("CUBE (a, (b, c), d)", format!("{cube}"));
     }
 }

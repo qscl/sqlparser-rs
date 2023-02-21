@@ -1097,30 +1097,33 @@ impl<'a> Parser<'a> {
 
     /// parse a group by expr. a group by expr can be one of group sets, roll up, cube, or simple
     /// expr.
-    fn parse_group_by_expr(&mut self) -> Result<Expr, ParserError> {
-        if dialect_of!(self is PostgreSqlDialect | GenericDialect) {
-            if self.parse_keywords(&[Keyword::GROUPING, Keyword::SETS]) {
-                self.expect_token(&Token::LParen)?;
-                let result = self.parse_comma_separated(|p| p.parse_tuple(false, true))?;
-                self.expect_token(&Token::RParen)?;
-                Ok(Expr::GroupingSets(result))
-            } else if self.parse_keyword(Keyword::CUBE) {
-                self.expect_token(&Token::LParen)?;
-                let result = self.parse_comma_separated(|p| p.parse_tuple(true, true))?;
-                self.expect_token(&Token::RParen)?;
-                Ok(Expr::Cube(result))
-            } else if self.parse_keyword(Keyword::ROLLUP) {
-                self.expect_token(&Token::LParen)?;
-                let result = self.parse_comma_separated(|p| p.parse_tuple(true, true))?;
-                self.expect_token(&Token::RParen)?;
-                Ok(Expr::Rollup(result))
+    fn parse_group_by_expr(&mut self) -> Result<ForEachOr<Expr>, ParserError> {
+        Ok(ForEachOr::Item(
+            if dialect_of!(self is PostgreSqlDialect | GenericDialect) {
+                if self.parse_keywords(&[Keyword::GROUPING, Keyword::SETS]) {
+                    self.expect_token(&Token::LParen)?;
+                    let result =
+                        self.parse_comma_separated_foreach(|p| p.parse_tuple(false, true))?;
+                    self.expect_token(&Token::RParen)?;
+                    Expr::GroupingSets(result)
+                } else if self.parse_keyword(Keyword::CUBE) {
+                    self.expect_token(&Token::LParen)?;
+                    let result = self.parse_comma_separated(|p| p.parse_tuple(true, true))?;
+                    self.expect_token(&Token::RParen)?;
+                    Expr::Cube(result)
+                } else if self.parse_keyword(Keyword::ROLLUP) {
+                    self.expect_token(&Token::LParen)?;
+                    let result = self.parse_comma_separated(|p| p.parse_tuple(true, true))?;
+                    self.expect_token(&Token::RParen)?;
+                    Expr::Rollup(result)
+                } else {
+                    self.parse_expr()?
+                }
             } else {
-                self.parse_expr()
-            }
-        } else {
-            // TODO parse rollup for other dialects
-            self.parse_expr()
-        }
+                // TODO parse rollup for other dialects
+                self.parse_expr()?
+            },
+        ))
     }
 
     /// parse a tuple with `(` and `)`.
@@ -1130,7 +1133,7 @@ impl<'a> Parser<'a> {
         &mut self,
         lift_singleton: bool,
         allow_empty: bool,
-    ) -> Result<Vec<Expr>, ParserError> {
+    ) -> Result<ForEachOr<Vec<Expr>>, ParserError> {
         if lift_singleton {
             if self.consume_token(&Token::LParen) {
                 let result = if allow_empty && self.consume_token(&Token::RParen) {
@@ -1140,9 +1143,9 @@ impl<'a> Parser<'a> {
                     self.expect_token(&Token::RParen)?;
                     result
                 };
-                Ok(result)
+                Ok(ForEachOr::Item(result))
             } else {
-                Ok(vec![self.parse_expr()?])
+                Ok(ForEachOr::Item(vec![self.parse_expr()?]))
             }
         } else {
             self.expect_token(&Token::LParen)?;
@@ -1153,23 +1156,33 @@ impl<'a> Parser<'a> {
                 self.expect_token(&Token::RParen)?;
                 result
             };
-            Ok(result)
+            Ok(ForEachOr::Item(result))
+        }
+    }
+
+    pub fn parse_case_arm(&mut self) -> Result<ForEachOr<CaseArm>, ParserError> {
+        if self.parse_keyword(Keyword::FOR) {
+            Ok(ForEachOr::ForEach(
+                self.parse_foreach(Parser::parse_case_arm)?,
+            ))
+        } else {
+            self.expect_keyword(Keyword::WHEN)?;
+            let condition = self.parse_expr()?;
+            self.expect_keyword(Keyword::THEN)?;
+            let result = self.parse_expr()?;
+            Ok(ForEachOr::Item(CaseArm { condition, result }))
         }
     }
 
     pub fn parse_case_expr(&mut self) -> Result<Expr, ParserError> {
         let mut operand = None;
-        if !self.parse_keyword(Keyword::WHEN) {
+        if !(self.peek_keyword(Keyword::WHEN) || self.peek_keyword(Keyword::FOR)) {
             operand = Some(Box::new(self.parse_expr()?));
-            self.expect_keyword(Keyword::WHEN)?;
         }
-        let mut conditions = vec![];
-        let mut results = vec![];
+        let mut arms = vec![];
         loop {
-            conditions.push(self.parse_expr()?);
-            self.expect_keyword(Keyword::THEN)?;
-            results.push(self.parse_expr()?);
-            if !self.parse_keyword(Keyword::WHEN) {
+            arms.push(self.parse_case_arm()?);
+            if !(self.peek_keyword(Keyword::WHEN) || self.peek_keyword(Keyword::FOR)) {
                 break;
             }
         }
@@ -1181,8 +1194,7 @@ impl<'a> Parser<'a> {
         self.expect_keyword(Keyword::END)?;
         Ok(Expr::Case {
             operand,
-            conditions,
-            results,
+            arms,
             else_result,
         })
     }
@@ -1658,6 +1670,57 @@ impl<'a> Parser<'a> {
             match_value,
             opt_search_modifier,
         })
+    }
+
+    fn parse_foreach_range_item(&mut self) -> Result<LoopRange, ParserError> {
+        let item = self.parse_identifier()?;
+        self.autocomplete_keywords(&[Keyword::IN]);
+        self.expect_keyword(Keyword::IN)?;
+        let range = Box::new(self.parse_expr()?);
+
+        Ok(LoopRange { item, range })
+    }
+
+    /// Parses foreach expressions (specific to QueryScript)
+    /// FOR (item in range, ...) {
+    ///    expr (in terms of item)
+    /// }
+    ///
+    pub fn parse_foreach<T, F>(&mut self, f: F) -> Result<ForEach<T>, ParserError>
+    where
+        F: FnMut(&mut Parser<'a>) -> Result<T, ParserError>,
+    {
+        // Parantheses are optional
+        let _ = self.consume_token(&Token::LParen);
+
+        let ranges = self.parse_comma_separated(Parser::parse_foreach_range_item)?;
+
+        let _ = self.consume_token(&Token::RParen);
+
+        self.autocomplete_tokens(&[Token::LBrace]);
+        self.expect_token(&Token::LBrace)?;
+        let body = self.parse_comma_separated(f)?;
+
+        self.autocomplete_tokens(&[Token::RBrace]);
+        self.expect_token(&Token::RBrace)?;
+
+        Ok(ForEach { ranges, body })
+    }
+
+    pub fn parse_comma_separated_foreach<T, F>(&mut self, f: F) -> Result<Vec<T>, ParserError>
+    where
+        F: Fn(&mut Parser<'a>) -> Result<T, ParserError> + Copy,
+        T: foreach::ConstructForEach,
+    {
+        let parse_item = move |p: &mut Parser<'a>| {
+            if p.parse_keyword(Keyword::FOR) {
+                Ok(T::construct_for_each(p.parse_foreach(f)?))
+            } else {
+                f(p)
+            }
+        };
+
+        self.parse_comma_separated(parse_item)
     }
 
     /// Parse an INTERVAL expression.
@@ -2360,6 +2423,13 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn peek_keyword(&mut self, expected: Keyword) -> bool {
+        match self.peek_token().token {
+            Token::Word(w) => w.keyword == expected,
+            _ => false,
+        }
+    }
+
     /// Look for an expected sequence of keywords and consume them if they exist
     #[must_use]
     pub fn parse_keywords(&mut self, keywords: &[Keyword]) -> bool {
@@ -2456,7 +2526,7 @@ impl<'a> Parser<'a> {
         let old_value = self.options.trailing_commas;
         self.options.trailing_commas |= dialect_of!(self is BigQueryDialect);
 
-        let ret = self.parse_comma_separated(|p| p.parse_select_item());
+        let ret = self.parse_comma_separated_foreach(|p| p.parse_select_item());
         self.options.trailing_commas = old_value;
 
         ret
@@ -5182,7 +5252,7 @@ impl<'a> Parser<'a> {
         };
 
         let returning = if self.parse_keyword(Keyword::RETURNING) {
-            Some(self.parse_comma_separated(Parser::parse_select_item)?)
+            Some(self.parse_comma_separated_foreach(Parser::parse_select_item)?)
         } else {
             None
         };
@@ -5542,7 +5612,7 @@ impl<'a> Parser<'a> {
         };
 
         let group_by = if self.parse_keywords(&[Keyword::GROUP, Keyword::BY]) {
-            self.parse_comma_separated(Parser::parse_group_by_expr)?
+            self.parse_comma_separated_foreach(Parser::parse_group_by_expr)?
         } else {
             vec![]
         };
@@ -6521,7 +6591,7 @@ impl<'a> Parser<'a> {
             };
 
             let returning = if self.parse_keyword(Keyword::RETURNING) {
-                Some(self.parse_comma_separated(Parser::parse_select_item)?)
+                Some(self.parse_comma_separated_foreach(Parser::parse_select_item)?)
             } else {
                 None
             };
@@ -6559,7 +6629,7 @@ impl<'a> Parser<'a> {
             None
         };
         let returning = if self.parse_keyword(Keyword::RETURNING) {
-            Some(self.parse_comma_separated(Parser::parse_select_item)?)
+            Some(self.parse_comma_separated_foreach(Parser::parse_select_item)?)
         } else {
             None
         };
