@@ -52,6 +52,8 @@ pub enum Value {
     NationalStringLiteral(String),
     /// X'hex value'
     HexStringLiteral(String),
+    /// f'format string'
+    FormatString(String),
 
     DoubleQuotedString(String),
     /// Boolean value true or false
@@ -74,6 +76,7 @@ impl fmt::Display for Value {
             Value::EscapedStringLiteral(v) => write!(f, "E'{}'", escape_escaped_string(v)),
             Value::NationalStringLiteral(v) => write!(f, "N'{v}'"),
             Value::HexStringLiteral(v) => write!(f, "X'{v}'"),
+            Value::FormatString(v) => write!(f, "f'{v}'"),
             Value::Boolean(v) => write!(f, "{v}"),
             Value::SingleQuotedByteStringLiteral(v) => write!(f, "B'{v}'"),
             Value::DoubleQuotedByteStringLiteral(v) => write!(f, "B\"{v}\""),
