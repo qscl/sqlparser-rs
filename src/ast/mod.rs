@@ -105,7 +105,7 @@ pub struct Ident {
     /// The value of the identifier without quotes.
     pub value: String,
     /// The starting quote if any. Valid quote characters are the single quote,
-    /// double quote, backtick, and opening square bracket.
+    /// double quote, backtick, opening square bracket, and 'f' (format string).
     pub quote_style: Option<char>,
 }
 
@@ -142,7 +142,7 @@ impl Ident {
     where
         S: Into<String>,
     {
-        assert!(quote == '\'' || quote == '"' || quote == '`' || quote == '[');
+        assert!(quote == '\'' || quote == '"' || quote == '`' || quote == '[' || quote == 'f');
         Ident {
             value: value.into(),
             quote_style: Some(quote),
@@ -182,13 +182,7 @@ impl From<&str> for Ident {
 
 impl From<&str> for Located<Ident> {
     fn from(value: &str) -> Self {
-        Located::new(
-            Ident {
-                value: value.to_string(),
-                quote_style: None,
-            },
-            None,
-        )
+        Located::new(value.into(), None)
     }
 }
 
@@ -200,6 +194,10 @@ impl fmt::Display for Ident {
                 write!(f, "{q}{escaped}{q}")
             }
             Some(q) if q == '[' => write!(f, "[{}]", self.value),
+            Some(q) if q == 'f' => {
+                let escaped = value::escape_quoted_string(&self.value, '"');
+                write!(f, "f\"{escaped}\"")
+            }
             None => f.write_str(&self.value),
             _ => panic!("unexpected quote style"),
         }

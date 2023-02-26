@@ -932,7 +932,8 @@ impl<'a> Parser<'a> {
             | Token::DoubleQuotedByteStringLiteral(_)
             | Token::RawStringLiteral(_)
             | Token::NationalStringLiteral(_)
-            | Token::HexStringLiteral(_) => {
+            | Token::HexStringLiteral(_)
+            | Token::SingleQuotedFormatString(_) => {
                 self.prev_token();
                 Ok(Expr::Value(self.parse_value()?))
             }
@@ -2715,6 +2716,7 @@ impl<'a> Parser<'a> {
             | Token::NationalStringLiteral(_)
             | Token::EscapedStringLiteral(_)
             | Token::HexStringLiteral(_)
+            | Token::SingleQuotedFormatString(_)
             | Token::Placeholder(_) => true,
             _ => false,
         } {
@@ -4603,6 +4605,7 @@ impl<'a> Parser<'a> {
                 Keyword::NoKeyword if w.quote_style.is_some() => match w.quote_style {
                     Some('"') => Ok(Value::DoubleQuotedString(w.value)),
                     Some('\'') => Ok(Value::SingleQuotedString(w.value)),
+                    Some('f') => Ok(Value::FormatString(w.value)),
                     _ => self.expected(
                         "A value?",
                         TokenWithLocation {
@@ -4643,6 +4646,7 @@ impl<'a> Parser<'a> {
             Token::NationalStringLiteral(ref s) => Ok(Value::NationalStringLiteral(s.to_string())),
             Token::EscapedStringLiteral(ref s) => Ok(Value::EscapedStringLiteral(s.to_string())),
             Token::HexStringLiteral(ref s) => Ok(Value::HexStringLiteral(s.to_string())),
+            Token::SingleQuotedFormatString(ref s) => Ok(Value::FormatString(s.to_string())),
             Token::Placeholder(ref s) => Ok(Value::Placeholder(s.to_string())),
             tok @ Token::Colon | tok @ Token::AtSign => {
                 let ident = self.parse_identifier()?;
@@ -5035,6 +5039,9 @@ impl<'a> Parser<'a> {
             Token::SingleQuotedString(s) => Ok(Some(Ident::with_quote_located('\'', s, range))),
             // Support for MySql dialect double quoted string, `AS "HOUR"` for example
             Token::DoubleQuotedString(s) => Ok(Some(Ident::with_quote_located('\"', s, range))),
+            Token::SingleQuotedFormatString(s) => {
+                Ok(Some(Ident::with_quote_located('f', s, range)))
+            }
             _ => {
                 if after_as {
                     return self.expected("an identifier after AS", next_token);

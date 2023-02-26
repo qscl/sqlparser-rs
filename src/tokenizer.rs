@@ -57,6 +57,8 @@ pub enum Token {
     SingleQuotedString(String),
     /// Double quoted string: i.e: "string"
     DoubleQuotedString(String),
+    /// Format string, i.e. f'foo_{bar}' (QueryScript extension)
+    SingleQuotedFormatString(String),
     /// Dollar quoted string: i.e: $$string$$ or $tag_name$string$tag_name$
     DollarQuotedString(DollarQuotedString),
     /// Byte string literal: i.e: b'string' or B'string'
@@ -199,6 +201,7 @@ impl fmt::Display for Token {
             Token::SingleQuotedByteStringLiteral(ref s) => write!(f, "B'{s}'"),
             Token::DoubleQuotedByteStringLiteral(ref s) => write!(f, "B\"{s}\""),
             Token::RawStringLiteral(ref s) => write!(f, "R'{s}'"),
+            Token::SingleQuotedFormatString(ref s) => write!(f, "f'{s}'"),
             Token::Comma => f.write_str(","),
             Token::Whitespace(ws) => write!(f, "{ws}"),
             Token::DoubleEq => f.write_str("=="),
@@ -311,6 +314,9 @@ impl fmt::Display for Word {
         match self.quote_style {
             Some(s) if s == '"' || s == '[' || s == '`' => {
                 write!(f, "{}{}{}", s, self.value, Word::matching_end_quote(s))
+            }
+            Some(s) if s == 'f' => {
+                write!(f, "f\"{}\"", self.value)
             }
             None => f.write_str(&self.value),
             _ => panic!("Unexpected quote_style!"),
@@ -593,6 +599,28 @@ impl<'a> Tokenizer<'a> {
                         _ => {
                             // regular identifier starting with an "X"
                             let s = self.tokenize_word(x, chars);
+                            Ok(Some(Token::make_word(&s, None)))
+                        }
+                    }
+                }
+                // QueryScript extension: format strings
+                f @ 'f' => {
+                    chars.next(); // consume, to check the next char
+
+                    match chars.peek() {
+                        Some('\'') => {
+                            let s = self.tokenize_quoted_string(chars, '\'')?;
+                            Ok(Some(Token::SingleQuotedFormatString(s)))
+                        }
+                        Some('\"') => {
+                            // NOTE: This is implemented in a manner that's specific to QueryScript (
+                            // double quote means identifier) but could be implemented more generally.
+                            let s = self.tokenize_quoted_string(chars, '\"')?;
+                            Ok(Some(Token::make_word(&s, Some('f'))))
+                        }
+                        _ => {
+                            // regular identifier starting with an "b" or "B"
+                            let s = self.tokenize_word(f, chars);
                             Ok(Some(Token::make_word(&s, None)))
                         }
                     }
