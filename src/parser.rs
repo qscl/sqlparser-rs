@@ -3815,6 +3815,22 @@ impl<'a> Parser<'a> {
             None
         };
 
+        let order_by = if self.parse_keywords(&[Keyword::ORDER, Keyword::BY]) {
+            if self.consume_token(&Token::LParen) {
+                let columns = if self.peek_token() != Token::RParen {
+                    self.parse_comma_separated(Parser::parse_identifier)?
+                } else {
+                    vec![]
+                };
+                self.expect_token(&Token::RParen)?;
+                Some(columns)
+            } else {
+                Some(vec![self.parse_identifier()?])
+            }
+        } else {
+            None
+        };
+
         let default_charset = if self.parse_keywords(&[Keyword::DEFAULT, Keyword::CHARSET]) {
             self.expect_token(&Token::Eq)?;
             let next_token = self.next_token();
@@ -3871,6 +3887,7 @@ impl<'a> Parser<'a> {
             .like(like)
             .clone_clause(clone)
             .engine(engine)
+            .order_by(order_by)
             .default_charset(default_charset)
             .collation(collation)
             .on_commit(on_commit)
