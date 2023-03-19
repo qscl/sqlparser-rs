@@ -911,6 +911,7 @@ impl<'a> Parser<'a> {
             }, // End of Token::Word
             // array `[1, 2, 3]`
             Token::LBracket => self.parse_array_expr(false),
+            Token::LBrace => self.parse_struct_expr(),
             tok @ Token::Minus | tok @ Token::Plus => {
                 let op = if tok == Token::Plus {
                     UnaryOperator::Plus
@@ -1434,6 +1435,26 @@ impl<'a> Parser<'a> {
             let exprs = self.parse_comma_separated(Parser::parse_expr)?;
             self.expect_token(&Token::RBracket)?;
             Ok(Expr::Array(Array { elem: exprs, named }))
+        }
+    }
+
+    pub fn parse_struct_field(&mut self) -> Result<StructField, ParserError> {
+        let name = self.parse_identifier()?;
+        self.expect_token(&Token::Colon)?;
+        let value = self.parse_expr()?;
+        Ok(StructField { name, value })
+    }
+
+    /// Parses a struct expression `{"a": 1, "b": 2}`
+    pub fn parse_struct_expr(&mut self) -> Result<Expr, ParserError> {
+        self.autocomplete_tokens(&[Token::RBrace]);
+        if self.peek_token().token == Token::RBrace {
+            let _ = self.next_token(); // consume ]
+            Ok(Expr::Struct(Struct(vec![])))
+        } else {
+            let exprs = self.parse_comma_separated(Parser::parse_struct_field)?;
+            self.expect_token(&Token::RBrace)?;
+            Ok(Expr::Struct(Struct(exprs)))
         }
     }
 

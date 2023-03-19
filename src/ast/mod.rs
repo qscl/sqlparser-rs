@@ -240,6 +240,32 @@ impl fmt::Display for Array {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct StructField {
+    pub name: Located<Ident>,
+    pub value: Expr,
+}
+
+impl fmt::Display for StructField {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.value)
+    }
+}
+
+/// Represents a Struct Expression
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct Struct(pub Vec<StructField>);
+
+impl fmt::Display for Struct {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{{}}}", display_comma_separated(&self.0))
+    }
+}
+
 /// JsonOperator
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -553,6 +579,8 @@ pub enum Expr {
     ArrayIndex { obj: Box<Expr>, indexes: Vec<Expr> },
     /// An array expression e.g. `ARRAY[1, 2]`
     Array(Array),
+    /// A struct expression, e.g. `{ 'a': 1, 'b': 2 }`
+    Struct(Struct),
     /// INTERVAL literals, roughly in the following format:
     /// `INTERVAL '<value>' [ <leading_field> [ (<leading_precision>) ] ]
     /// [ TO <last_field> [ (<fractional_seconds_precision>) ] ]`,
@@ -909,6 +937,9 @@ impl fmt::Display for Expr {
             }
             Expr::Array(set) => {
                 write!(f, "{set}")
+            }
+            Expr::Struct(v) => {
+                write!(f, "{v}")
             }
             Expr::JsonAccess {
                 left,
