@@ -619,6 +619,7 @@ define_keywords!(
     VERSIONING,
     VIEW,
     VIRTUAL,
+    VIZ,
     VOLATILE,
     WEEK,
     WHEN,
